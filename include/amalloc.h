@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 
+#define ALIGNMENT 16
 #define CHUNK_SIZE (1024 * 1024)
 
 typedef struct block {
