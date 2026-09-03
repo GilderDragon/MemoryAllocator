@@ -9,6 +9,7 @@ typedef struct block {
 	unsigned int is_free : 1;
 	size_t size;
 
+	struct chunk *owner;
 	struct block *next;
 	struct block *prev;
 } block_t;
@@ -41,6 +42,7 @@ static int create_chunk(void) {
 	block_t *block = (block_t*)((char*)mem + sizeof(chunk_t));
 	block->is_free = 1;
 	block->size = CHUNK_SIZE - sizeof(chunk_t) - sizeof(block_t);
+	block->owner = chunk;
 	block->next = NULL;
 	block->prev = NULL;
 
@@ -65,6 +67,7 @@ static void cut_block(chunk_t *chunk, block_t *block, size_t size) {
 
 		new_block->is_free = 1;
 		new_block->size = block->size - size - sizeof(block_t);
+		new_block->owner = chunk;
 		new_block->next = block->next;
 		new_block->prev = block->prev;
 
@@ -113,5 +116,39 @@ void *amalloc(size_t size) {
 	return (char*)block + sizeof(block_t); 
 }
 
-void afree(void *mem);
+void afree(void *mem) {
+	if (mem == NULL) return;
+
+	block_t *block = (block_t*)((char*)mem - sizeof(block_t));
+	chunk_t *chunk = block->owner;
+
+	if (block->is_free) return;
+
+	block_t *next_block = (block_t*)((char*)block + sizeof(block_t) + block->size);
+
+	if ((char*)next_block < (char*)chunk + CHUNK_SIZE && next_block->is_free) {
+		block->size += sizeof(block_t) + next_block->size;
+
+		if (next_block->prev) next_block->prev->next = next_block->next;
+		else chunk->free_list = next_block->next;
+
+		if (next_block->next) next_block->next->prev = next_block->prev;
+	}
+
+	block_t *current_block = (block_t*)((char*)chunk + sizeof(chunk_t));
+	block_t *prev_block = NULL;
+
+	while (current_block && current_block != block) {
+		prev_block = current_block;
+		current_block = (block_t*)(((char*)(current_block) + sizeof(block_t) + current_block->size));
+	}
+
+	if (prev_block && prev_block->is_free) prev_block->size += sizeof(block_t) + block->size;
+	else {
+		block->is_free = 1;
+		block->next = chunk->free_list;
+		if (block->next) block->next->prev = block;
+		chunk->free_list = block;
+	}
+}
 
